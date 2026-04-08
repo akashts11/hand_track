@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HandStrings — Play with your hands</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --accent1: #a78bfa;
+  --accent3: #34d399;
+  --accent4: #fbbf24;
+  --mono: 'Space Mono', monospace;
+  --display: 'Syne', sans-serif;
+}
+html, body { width: 100%; height: 100%; overflow: hidden; background: #000; font-family: var(--mono); }
+
+#stage { position: fixed; inset: 0; }
+#video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); opacity: 0; transition: opacity 0.8s ease; }
+#video.visible { opacity: 1; }
+#overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
+#stage::after { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse at center, transparent 30%, rgba(0,0,0,0.55) 100%); pointer-events: none; z-index: 2; }
+
+#hud { position: fixed; inset: 0; z-index: 10; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; padding: 22px 28px; }
+#top-bar { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+#logo { font-family: var(--display); font-weight: 800; font-size: 1.7rem; letter-spacing: -0.04em; line-height: 1; color: #fff; text-shadow: 0 0 40px rgba(167,139,250,0.9); }
+#logo span { color: var(--accent1); }
+#tagline { font-size: 0.6rem; color: rgba(255,255,255,0.38); letter-spacing: 0.14em; text-transform: uppercase; margin-top: 3px; }
+#top-right { display: flex; flex-direction: column; align-items: flex-end; gap: 9px; }
+#status-pill { font-size: 0.63rem; letter-spacing: 0.08em; text-transform: uppercase; padding: 5px 13px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.4); backdrop-filter: blur(10px); color: rgba(255,255,255,0.5); display: flex; align-items: center; gap: 6px; transition: border-color 0.3s, color 0.3s; }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+.dot.pulse { animation: pulse 1.4s ease-in-out infinite; }
+@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.35;transform:scale(0.65)} }
+
+#mode-strip-wrap { pointer-events: all; max-width: min(830px, 88vw); }
+#mode-strip { display: flex; gap: 5px; overflow-x: auto; padding-bottom: 3px; scrollbar-width: none; }
+#mode-strip::-webkit-scrollbar { display: none; }
+.mode-btn { font-family: var(--mono); font-size: 0.6rem; letter-spacing: 0.08em; text-transform: uppercase; padding: 6px 13px; border-radius: 999px; white-space: nowrap; flex-shrink: 0; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.32); backdrop-filter: blur(12px); color: rgba(255,255,255,0.48); cursor: pointer; transition: all 0.2s; }
+.mode-btn:hover { color: #fff; border-color: rgba(255,255,255,0.38); }
+.mode-btn.active { color: #fff; border-color: var(--mc,#a78bfa); box-shadow: 0 0 16px -4px var(--mc,#a78bfa), inset 0 0 14px -8px var(--mc,#a78bfa); text-shadow: 0 0 10px var(--mc,#a78bfa); }
+
+#bottom-bar { display: flex; justify-content: space-between; align-items: flex-end; }
+#hint { font-size: 0.6rem; color: rgba(255,255,255,0.26); letter-spacing: 0.05em; line-height: 1.95; max-width: 340px; }
+#hint strong { color: rgba(255,255,255,0.52); font-weight: 400; }
+#hand-count { font-size: 0.6rem; color: rgba(255,255,255,0.28); letter-spacing: 0.08em; text-transform: uppercase; text-align: right; }
+#hand-count span { font-size: 1.25rem; font-family: var(--display); font-weight: 800; color: var(--accent1); display: block; text-shadow: 0 0 18px var(--accent1); line-height: 1; }
+
+#mode-flash { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); font-family: var(--display); font-weight: 800; font-size: clamp(1.8rem,5.5vw,3.5rem); letter-spacing: -0.04em; color: #fff; pointer-events: none; z-index: 30; opacity: 0; transition: opacity 0.15s; text-shadow: 0 0 60px var(--mc,#a78bfa); }
+#mode-flash.show { opacity: 1; }
+
+#paint-clear { position: fixed; bottom: 68px; right: 28px; z-index: 15; font-family: var(--mono); font-size: 0.58rem; letter-spacing: 0.08em; text-transform: uppercase; padding: 7px 14px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.18); background: rgba(0,0,0,0.38); backdrop-filter: blur(10px); color: rgba(255,255,255,0.48); cursor: pointer; display: none; transition: all 0.2s; }
+#paint-clear:hover { color: #fff; border-color: rgba(255,255,255,0.5); }
+#paint-clear.show { display: block; }
+
+#splash { position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; background: #000; transition: opacity 0.8s ease; }
+#splash.gone { opacity: 0; pointer-events: none; }
+#splash-title { font-family: var(--display); font-size: clamp(3rem,10vw,7rem); font-weight: 800; letter-spacing: -0.05em; color: #fff; line-height: 0.9; text-align: center; }
+#splash-title em { font-style: normal; color: var(--accent1); }
+#splash-sub { font-size: 0.72rem; color: rgba(255,255,255,0.33); letter-spacing: 0.13em; text-transform: uppercase; margin-bottom: 8px; }
+#splash-modes { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; max-width: 540px; margin-bottom: 8px; }
+.splash-pill { font-size: 0.56rem; letter-spacing: 0.08em; text-transform: uppercase; padding: 4px 10px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.14); color: rgba(255,255,255,0.35); }
+#splash-start { font-family: var(--display); font-size: 1.05rem; font-weight: 700; padding: 15px 42px; border-radius: 999px; border: 1.5px solid var(--accent1); background: rgba(167,139,250,0.15); backdrop-filter: blur(16px); color: #fff; cursor: pointer; transition: all 0.25s; box-shadow: 0 0 40px -8px var(--accent1); margin-top: 6px; }
+#splash-start:hover { background: rgba(167,139,250,0.38); box-shadow: 0 0 64px -4px var(--accent1); transform: scale(1.04); }
+#splash-note { font-size: 0.58rem; color: rgba(255,255,255,0.18); letter-spacing: 0.06em; margin-top: 4px; }
+#splash::after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(255,255,255,0.01) 2px,rgba(255,255,255,0.01) 4px); pointer-events: none; }
+</style>
+</head>
+<body>
+
+<div id="splash">
+  <div id="splash-title">Hand<em>Strings</em></div>
+  <div id="splash-sub">11 modes · bring both hands together</div>
+  <div id="splash-modes">
+    <span class="splash-pill">✦ String</span><span class="splash-pill">⟵ Elastic</span><span class="splash-pill">⬡ Web</span>
+    <span class="splash-pill">〜 Ribbons</span><span class="splash-pill">⚡ Lasers</span><span class="splash-pill">○ Bubbles</span>
+    <span class="splash-pill">✏ Paint</span><span class="splash-pill">★ Constellation</span><span class="splash-pill">☠ Neon Bones</span>
+    <span class="splash-pill">⊕ Magnet</span><span class="splash-pill">◈ Kaleidoscope</span>
+  </div>
+  <button id="splash-start">Enable camera &amp; play</button>
+  <div id="splash-note">Requires webcam · Chrome recommended · Bring both hands for the best effects</div>
+</div>
+
+<div id="stage">
+  <video id="video" autoplay playsinline muted></video>
+  <canvas id="overlay"></canvas>
+</div>
+
+<div id="hud">
+  <div id="top-bar">
+    <div>
+      <div id="logo">Hand<span>Strings</span></div>
+      <div id="tagline">real-time hand physics · 11 modes</div>
+    </div>
+    <div id="top-right">
+      <div id="status-pill"><div class="dot pulse"></div><span id="status-text">ready</span></div>
+      <div id="mode-strip-wrap">
+        <div id="mode-strip">
+          <button class="mode-btn active" data-mode="string"        style="--mc:#818cf8">✦ String</button>
+          <button class="mode-btn"        data-mode="elastic"       style="--mc:#f472b6">⟵ Elastic</button>
+          <button class="mode-btn"        data-mode="web"           style="--mc:#5eead4">⬡ Web</button>
+          <button class="mode-btn"        data-mode="ribbons"       style="--mc:#fbbf24">〜 Ribbons</button>
+          <button class="mode-btn"        data-mode="lasers"        style="--mc:#f87171">⚡ Lasers</button>
+          <button class="mode-btn"        data-mode="bubbles"       style="--mc:#93c5fd">○ Bubbles</button>
+          <button class="mode-btn"        data-mode="paint"         style="--mc:#a3e635">✏ Paint</button>
+          <button class="mode-btn"        data-mode="constellation" style="--mc:#c4b5fd">★ Constellation</button>
+          <button class="mode-btn"        data-mode="bones"         style="--mc:#fb923c">☠ Neon Bones</button>
+          <button class="mode-btn"        data-mode="magnet"        style="--mc:#f0abfc">⊕ Magnet</button>
+          <button class="mode-btn"        data-mode="kaleidoscope"  style="--mc:#67e8f9">◈ Kaleidoscope</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div id="bottom-bar">
+    <div id="hint"></div>
+    <div>
+      <div id="hand-count"><span id="hand-num">0</span>hands detected</div>
+    </div>
+  </div>
+</div>
+
+<div id="mode-flash"></div>
+<button id="paint-clear">⌫ clear canvas</button>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script>
+const video       = document.getElementById('video');
+const canvas      = document.getElementById('overlay');
+const ctx         = canvas.getContext('2d');
+const statusText  = document.getElementById('status-text');
+const statusPill  = document.getElementById('status-pill');
+const handNum     = document.getElementById('hand-num');
+const splashEl    = document.getElementById('splash');
+const splashStart = document.getElementById('splash-start');
+const modeFlash   = document.getElementById('mode-flash');
+const paintClearBtn = document.getElementById('paint-clear');
+const hintEl      = document.getElementById('hint');
+
+let mode = 'string';
+let handData = [];
+let started = false;
+let t = 0;
+let flashTimer = null;
+
+const trailMap = new Map();
+let bubbles = [];
+let magnetParticles = [];
+let paintCanvas, paintCtx;
+
+function resize() {
+  canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+  if (paintCanvas) { paintCanvas.width = canvas.width; paintCanvas.height = canvas.height; }
+}
+resize(); window.addEventListener('resize', resize);
+
+paintCanvas = document.createElement('canvas');
+paintCanvas.width = canvas.width; paintCanvas.height = canvas.height;
+paintCtx = paintCanvas.getContext('2d');
+
+/* ---- Palettes ---- */
+const P = {
+  string:        ['#ffffff','#a5f3fc','#c4b5fd','#6ee7b7','#fde68a','#fca5a5'],
+  elastic:       ['#f472b6','#fb923c','#facc15','#e879f9','#f43f5e'],
+  web:           ['#5eead4','#93c5fd','#c4b5fd','#6ee7b7'],
+  ribbons:       ['#fbbf24','#f472b6','#a78bfa','#34d399','#60a5fa'],
+  lasers:        ['#f87171','#fbbf24','#f472b6','#fb923c'],
+  bubbles:       ['#93c5fd','#c4b5fd','#5eead4','#bfdbfe','#a5f3fc'],
+  paint:         ['#a3e635','#34d399','#fbbf24','#f472b6','#818cf8','#f87171','#67e8f9'],
+  constellation: ['#c4b5fd','#e0e7ff','#818cf8','#a5b4fc'],
+  bones:         ['#fb923c','#fbbf24','#f97316'],
+  magnet:        ['#f0abfc','#e879f9','#c026d3','#d946ef'],
+  kaleidoscope:  ['#67e8f9','#a5f3fc','#5eead4','#c4b5fd','#818cf8'],
+};
+
+const MODE_HINTS = {
+  string:        '<strong>String</strong> — 2 hands: every fingertip connects with glowing strings',
+  elastic:       '<strong>Elastic</strong> — 2 hands: thick bands stretch between matching fingers',
+  web:           '<strong>Web</strong> — 2 hands: dense mesh weaves between all 21 points',
+  ribbons:       '<strong>Ribbons</strong> — move slowly · 2 hands: silk flows between palms',
+  lasers:        '<strong>Lasers</strong> — 2 hands: crossfire beams between index tips',
+  bubbles:       '<strong>Bubbles</strong> — 2 hands: fountain of bubbles between palms',
+  paint:         '<strong>Paint</strong> — draw with fingertips · 2 hands: 10 colour brush',
+  constellation: '<strong>Constellation</strong> — 2 hands: full sky map links both hands',
+  bones:         '<strong>Neon Bones</strong> — 2 hands: skeleton bridge wrist to wrist',
+  magnet:        '<strong>Magnet</strong> — 2 hands: twin gravity wells with vortex stream',
+  kaleidoscope:  '<strong>Kaleidoscope</strong> — 2 hands: 12-slice mirror geometry',
+};
+
+/* ---- Mode buttons ---- */
+document.querySelectorAll('.mode-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const prev = mode; mode = btn.dataset.mode;
+    if (mode !== prev) {
+      trailMap.clear(); bubbles = [];
+      if (mode === 'magnet') initMagnetParticles();
+      paintClearBtn.classList.toggle('show', mode === 'paint');
+      hintEl.innerHTML = MODE_HINTS[mode] || '';
+      const col = btn.style.getPropertyValue('--mc');
+      modeFlash.textContent = btn.textContent.trim();
+      modeFlash.style.setProperty('--mc', col);
+      modeFlash.classList.add('show');
+      clearTimeout(flashTimer); flashTimer = setTimeout(() => modeFlash.classList.remove('show'), 900);
+    }
+  });
+});
+hintEl.innerHTML = MODE_HINTS['string'];
+paintClearBtn.addEventListener('click', () => paintCtx.clearRect(0,0,paintCanvas.width,paintCanvas.height));
+
+function setStatus(state, text) {
+  statusText.textContent = text;
+  if (state==='active') { statusPill.style.borderColor='var(--accent3)'; statusPill.style.color='var(--accent3)'; }
+  else if (state==='waiting') { statusPill.style.borderColor='var(--accent4)'; statusPill.style.color='var(--accent4)'; }
+  else { statusPill.style.borderColor='rgba(255,255,255,0.15)'; statusPill.style.color='rgba(255,255,255,0.6)'; }
+}
+
+/* ---- Camera ---- */
+function initCamera() {
+  setStatus('waiting','starting camera…');
+  const hands = new Hands({ locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
+  hands.setOptions({ maxNumHands:2, modelComplexity:1, minDetectionConfidence:0.7, minTrackingConfidence:0.5 });
+  hands.onResults(results => {
+    handData = [];
+    if (results.multiHandLandmarks)
+      for (const lm of results.multiHandLandmarks)
+        handData.push(lm.map(p => ({ x:(1-p.x)*canvas.width, y:p.y*canvas.height })));
+    handNum.textContent = handData.length;
+    if (handData.length>0) setStatus('active', handData.length===2 ? '✦ two hands' : 'one hand');
+    else setStatus('waiting','show your hands');
+  });
+  const camera = new Camera(video, { onFrame: async () => { await hands.send({ image: video }); }, width:1280, height:720 });
+  camera.start().then(() => { video.classList.add('visible'); setStatus('waiting','show your hands'); }).catch(() => setStatus('','camera denied'));
+}
+splashStart.addEventListener('click', () => {
+  splashEl.classList.add('gone');
+  setTimeout(() => splashEl.style.display='none', 900);
+  if (!started) { started=true; initCamera(); initMagnetParticles(); }
+});
+
+/* ---- Helpers ---- */
+function glow(col,b)  { ctx.shadowColor=col; ctx.shadowBlur=b; }
+function noGlow()     { ctx.shadowBlur=0; }
+function dot(p,r,col,g=20) { ctx.beginPath(); ctx.arc(p.x,p.y,r,0,Math.PI*2); ctx.fillStyle=col; glow(col,g); ctx.fill(); noGlow(); }
+function skeleton(hand, alpha=0.09) {
+  const C=[[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[0,9],[9,10],[10,11],[11,12],[0,13],[13,14],[14,15],[15,16],[0,17],[17,18],[18,19],[19,20]];
+  ctx.strokeStyle=`rgba(255,255,255,${alpha})`; ctx.lineWidth=1;
+  C.forEach(([a,b])=>{ ctx.beginPath(); ctx.moveTo(hand[a].x,hand[a].y); ctx.lineTo(hand[b].x,hand[b].y); ctx.stroke(); });
+}
+function getKey(hand)  { return [0,4,8,12,16,20].map(i=>hand[i]); }
+function getTips(hand) { return [4,8,12,16,20].map(i=>hand[i]); }
+function palmCenter(hand) {
+  const s=[0,1,5,9,13,17].map(i=>hand[i]);
+  return { x:s.reduce((a,p)=>a+p.x,0)/s.length, y:s.reduce((a,p)=>a+p.y,0)/s.length };
+}
+
+/* ============================================================
+   THE CORE TWO-HAND CONNECTION — matching the video exactly:
+   Straight glowing lines from EVERY landmark on hand1
+   to EVERY corresponding/nearby landmark on hand2.
+   Density and glow shifts based on hand distance.
+   ============================================================ */
+function drawTwoHandStrings(h1, h2, palette, options={}) {
+  const { allToAll=false, fingersOnly=false, lineWidth=1.5, maxAlpha=0.85, minDist=0, maxDist=99999 } = options;
+
+  // Decide which points to use
+  const pts1 = fingersOnly ? [4,8,12,16,20].map(i=>h1[i]) : h1;
+  const pts2 = fingersOnly ? [4,8,12,16,20].map(i=>h2[i]) : h2;
+
+  const pc1 = palmCenter(h1), pc2 = palmCenter(h2);
+  const handDist = Math.hypot(pc2.x-pc1.x, pc2.y-pc1.y);
+
+  if (allToAll) {
+    // Dense web: every point to every point (web mode look)
+    for (let i=0; i<pts1.length; i++) {
+      for (let j=0; j<pts2.length; j++) {
+        const p1=pts1[i], p2=pts2[j];
+        const d = Math.hypot(p2.x-p1.x, p2.y-p1.y);
+        if (d < minDist || d > maxDist) continue;
+        const proximity = Math.max(0, 1 - d/600);
+        const col = palette[(i+j) % palette.length];
+        ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y);
+        ctx.strokeStyle = col;
+        ctx.lineWidth = lineWidth * (0.5 + proximity*0.8);
+        ctx.globalAlpha = maxAlpha * (0.15 + proximity*0.85);
+        glow(col, 6 + proximity*14); ctx.stroke(); noGlow();
+      }
+    }
+    ctx.globalAlpha = 1;
+  } else {
+    // String mode: matching index connections (1-to-1, like harp strings)
+    const count = Math.min(pts1.length, pts2.length);
+    for (let i=0; i<count; i++) {
+      const p1=pts1[i], p2=pts2[i];
+      const col = palette[i % palette.length];
+      const d = Math.hypot(p2.x-p1.x, p2.y-p1.y);
+      // Tension: closer hands = more slack/glow, far = tight bright lines
+      const tension = Math.min(d / 400, 1);
+
+      // Glow layers
+      [lineWidth*5, lineWidth*2, lineWidth].forEach((lw, l) => {
+        ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y);
+        ctx.strokeStyle = col;
+        ctx.lineWidth = lw;
+        ctx.globalAlpha = maxAlpha * [0.04, 0.12, 1][l];
+        ctx.lineCap = 'round';
+        if (l===2) glow(col, 8 + tension*18);
+        ctx.stroke(); noGlow();
+      });
+      ctx.globalAlpha = 1;
+    }
+  }
+}
+
+/* ===== DRAW MODES ===== */
+
+function drawString(hands) {
+  hands.forEach(h => skeleton(h, 0.1));
+  if (!hands.length) return;
+
+  // Per-hand internal string
+  hands.forEach((hand, hi) => {
+    const pts = getKey(hand);
+    const pal = P.string;
+    for (let c=0; c<2; c++) {
+      ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i=0; i<pts.length-1; i++) {
+        const mx=(pts[i].x+pts[i+1].x)/2, my=(pts[i].y+pts[i+1].y)/2;
+        ctx.quadraticCurveTo(pts[i].x,pts[i].y,mx,my);
+      }
+      ctx.strokeStyle = pal[(hi*2+c)%pal.length]; ctx.lineWidth = 3-c;
+      ctx.globalAlpha = 1-c*0.35; glow(pal[(hi*2+c)%pal.length], 14-c*4); ctx.stroke(); noGlow();
+    }
+    ctx.globalAlpha = 1;
+    pts.forEach((p,i) => dot(p, 5, pal[(hi*6+i)%pal.length], 18));
+  });
+
+  // 2-hand: STRAIGHT GLOWING STRINGS landmark-to-landmark like the video
+  if (hands.length === 2) {
+    // All 21 landmarks on each hand connected with straight lines
+    drawTwoHandStrings(hands[0], hands[1], P.string, {
+      allToAll: false,
+      fingersOnly: false,
+      lineWidth: 1.2,
+      maxAlpha: 0.9,
+    });
+    // Extra bright fingertip-only overlay on top
+    drawTwoHandStrings(hands[0], hands[1], ['#ffffff','#a5f3fc','#c4b5fd','#6ee7b7','#fde68a'], {
+      allToAll: false,
+      fingersOnly: true,
+      lineWidth: 2,
+      maxAlpha: 1.0,
+    });
+    // Glowing dots at each landmark
+    hands.forEach(hand => {
+      hand.forEach((p,i) => dot(p, i===0?7:4, P.string[i%P.string.length], 22));
+    });
+  }
+}
+
+function drawElastic(hands) {
+  hands.forEach(h => skeleton(h, 0.09));
+  if (!hands.length) return;
+  const pal=P.elastic; const h1=hands[0]; const h2=hands[1]||null;
+
+  if (hands.length === 1) {
+    // 1 hand: internal elastic between tips and palm
+    [4,8,12,16,20].forEach((ti,idx) => {
+      const p1=h1[ti], p2=h1[0];
+      const col=pal[idx%pal.length];
+      [10,4,1.5].forEach((lw,l) => {
+        ctx.beginPath(); ctx.moveTo(p1.x,p1.y); ctx.lineTo(p2.x,p2.y);
+        ctx.strokeStyle=col; ctx.lineWidth=lw; ctx.globalAlpha=[0.08,0.2,0.7][l];
+        ctx.lineCap='round'; if(l===2)glow(col,12); ctx.stroke(); noGlow();
+      });
+      ctx.globalAlpha=1; dot(p1,6,col);
+    });
+  } else {
+    // 2 hands: thick elastic bands between each matching finger
+    [4,8,12,16,20].forEach((ti,idx) => {
+      const p1=h1[ti], p2=h2[ti];
+      const dx=p2.x-p1.x, dy=p2.y-p1.y, dist=Math.sqrt(dx*dx+dy*dy);
+      const sag=Math.min(dist*0.3, 90);
+      const mx=(p1.x+p2.x)/2, my=(p1.y+p2.y)/2;
+      const nx=dist>0?-dy/dist:0, ny=dist>0?dx/dist:1;
+      const cpx=mx+nx*sag, cpy=my+ny*sag;
+      const col=pal[idx%pal.length];
+      [18,8,3].forEach((lw,l) => {
+        ctx.beginPath(); ctx.moveTo(p1.x,p1.y); ctx.quadraticCurveTo(cpx,cpy,p2.x,p2.y);
+        ctx.strokeStyle=col; ctx.lineWidth=lw; ctx.globalAlpha=[0.1,0.22,0.95][l];
+        ctx.lineCap='round'; if(l===2)glow(col,16); ctx.stroke(); noGlow();
+      });
+      ctx.globalAlpha=1; dot(p1,8,col,22); dot(p2,8,col,22);
+    });
+    // Also draw the dense string web behind the elastic bands
+    drawTwoHandStrings(hands[0], hands[1], pal, { allToAll:true, lineWidth:0.8, maxAlpha:0.25, maxDist:400 });
+  }
+}
+
+function drawWeb(hands) {
+  hands.forEach(h => skeleton(h, 0.08));
+  if (!hands.length) return;
+  const pal=P.web;
+
+  // Internal web per hand
+  hands.forEach(hand => {
+    const pts=hand;
+    for (let i=0;i<pts.length;i++) for (let j=i+1;j<pts.length;j++) {
+      const dx=pts[j].x-pts[i].x, dy=pts[j].y-pts[i].y, d=Math.sqrt(dx*dx+dy*dy);
+      const a=Math.max(0,1-d/220); if(a<0.06) continue;
+      const col=pal[(i+j)%pal.length];
+      ctx.beginPath(); ctx.moveTo(pts[i].x,pts[i].y); ctx.lineTo(pts[j].x,pts[j].y);
+      ctx.strokeStyle=col; ctx.lineWidth=1.2; ctx.globalAlpha=a*0.7;
+      glow(col,6); ctx.stroke(); noGlow();
+    }
+    ctx.globalAlpha=1;
+  });
+
+  // 2-hand: DENSE ALL-TO-ALL WEB between both hands (the cage/mesh in the video)
+  if (hands.length === 2) {
+    drawTwoHandStrings(hands[0], hands[1], pal, {
+      allToAll: true,
+      lineWidth: 1.0,
+      maxAlpha: 0.8,
+    });
+    // Bright fingertip-to-fingertip on top
+    drawTwoHandStrings(hands[0], hands[1], ['#5eead4','#93c5fd','#c4b5fd','#a5f3fc','#6ee7b7'], {
+      allToAll: false,
+      fingersOnly: true,
+      lineWidth: 2,
+      maxAlpha: 1.0,
+    });
+    hands.forEach(hand => hand.forEach((p,i) => dot(p, i===0?6:3.5, pal[i%pal.length], 16)));
+  } else {
+    hands.forEach(h => getKey(h).forEach((p,i) => dot(p,5,pal[i%pal.length],18)));
+  }
+}
+
+function drawRibbons(hands) {
+  hands.forEach(h => skeleton(h, 0.07));
+  if (!hands.length) { trailMap.clear(); return; }
+  hands.forEach((hand,hi) => {
+    [4,8,12,16,20].forEach((ti,fi) => {
+      const key=`r${hi}-${fi}`, p=hand[ti];
+      if (!trailMap.has(key)) trailMap.set(key,[]);
+      const trail=trailMap.get(key);
+      trail.push({x:p.x,y:p.y}); if(trail.length>55) trail.shift();
+      if (trail.length<3) return;
+      const col=P.ribbons[(hi*5+fi)%P.ribbons.length];
+      ctx.beginPath(); ctx.moveTo(trail[0].x,trail[0].y);
+      for (let i=1;i<trail.length-1;i++) {
+        const mx=(trail[i].x+trail[i+1].x)/2, my=(trail[i].y+trail[i+1].y)/2;
+        ctx.quadraticCurveTo(trail[i].x,trail[i].y,mx,my);
+      }
+      ctx.strokeStyle=col; ctx.lineWidth=3; ctx.lineCap='round'; ctx.globalAlpha=0.9;
+      glow(col,16); ctx.stroke(); noGlow(); ctx.globalAlpha=1;
+      dot(p,5,col);
+    });
+  });
+  // 2-hand: bright straight strings while ribbons trail
+  if (hands.length===2) {
+    drawTwoHandStrings(hands[0], hands[1], P.ribbons, { allToAll:false, fingersOnly:true, lineWidth:2.5, maxAlpha:0.9 });
+  }
+}
+
+function drawLasers(hands) {
+  hands.forEach(h => skeleton(h,0.05));
+  if (!hands.length) return;
+  hands.forEach((hand,hi) => {
+    getTips(hand).forEach((tip,fi) => {
+      const wrist=hand[0]; const dx=tip.x-wrist.x, dy=tip.y-wrist.y, len=Math.sqrt(dx*dx+dy*dy);
+      if (len<10) return;
+      const ux=dx/len, uy=dy/len;
+      const ex=tip.x+ux*2000, ey=tip.y+uy*2000;
+      const col=P.lasers[(hi*5+fi)%P.lasers.length];
+      [14,5,1.5].forEach((lw,l) => {
+        ctx.beginPath(); ctx.moveTo(tip.x,tip.y); ctx.lineTo(ex,ey);
+        ctx.strokeStyle=col; ctx.lineWidth=lw; ctx.globalAlpha=[0.07,0.18,0.95][l];
+        ctx.lineCap='round'; if(l===2)glow(col,22); ctx.stroke(); noGlow();
+      });
+      ctx.globalAlpha=1; dot(tip,7,col);
+    });
+  });
+  if (hands.length===2) {
+    // Bright crossfire web of laser beams between hands
+    drawTwoHandStrings(hands[0], hands[1], P.lasers, { allToAll:true, lineWidth:1.5, maxAlpha:0.9, maxDist:500 });
+    const p1=hands[0][8], p2=hands[1][8];
+    [8,2].forEach((lw,l) => {
+      ctx.beginPath(); ctx.moveTo(p1.x,p1.y); ctx.lineTo(p2.x,p2.y);
+      ctx.strokeStyle='#fff'; ctx.lineWidth=lw; ctx.globalAlpha=l===0?0.1:0.95;
+      if(l===1)glow('#fff',40); ctx.stroke(); noGlow();
+    });
+    ctx.globalAlpha=1; dot(p1,10,'#fff',40); dot(p2,10,'#fff',40);
+  }
+}
+
+function drawBubbles(hands) {
+  if (hands.length) {
+    hands.forEach(hand => {
+      const rate = hands.length===2 ? 0.35 : 0.22;
+      if (Math.random()<rate) {
+        const pc=palmCenter(hand);
+        const r=14+Math.random()*44;
+        bubbles.push({ x:pc.x+(Math.random()-0.5)*55,y:pc.y+(Math.random()-0.5)*30,r,vx:(Math.random()-0.5)*1.8,vy:-1.2-Math.random()*2.4,life:1,col:P.bubbles[Math.floor(Math.random()*P.bubbles.length)] });
+      }
+    });
+    hands.forEach(h => skeleton(h,0.06));
+    if (hands.length===2 && Math.random()<0.35) {
+      const pc1=palmCenter(hands[0]), pc2=palmCenter(hands[1]);
+      const mx=(pc1.x+pc2.x)/2, my=(pc1.y+pc2.y)/2;
+      bubbles.push({ x:mx+(Math.random()-0.5)*40,y:my+(Math.random()-0.5)*40,r:20+Math.random()*40,vx:(Math.random()-0.5)*2,vy:-1-Math.random()*1.5,life:1,col:'#c4b5fd' });
+    }
+    // String connection visible through bubbles
+    if (hands.length===2) {
+      drawTwoHandStrings(hands[0], hands[1], P.bubbles, { allToAll:false, fingersOnly:true, lineWidth:1.5, maxAlpha:0.5 });
+    }
+  }
+  bubbles = bubbles.filter(b=>b.life>0.02);
+  bubbles.forEach(b => {
+    b.x+=b.vx; b.y+=b.vy; b.vx*=0.992; b.vy*=0.994; b.life-=0.007;
+    ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,Math.PI*2);
+    ctx.strokeStyle=b.col; ctx.lineWidth=1.5; ctx.globalAlpha=b.life*0.85;
+    glow(b.col,14); ctx.stroke(); noGlow();
+    ctx.beginPath(); ctx.arc(b.x-b.r*0.3,b.y-b.r*0.3,b.r*0.22,0,Math.PI*2);
+    ctx.fillStyle='rgba(255,255,255,0.35)'; ctx.globalAlpha=b.life*0.55; ctx.fill();
+    ctx.globalAlpha=1;
+  });
+}
+
+function drawPaint(hands) {
+  ctx.drawImage(paintCanvas,0,0);
+  if (!hands.length) return;
+  hands.forEach(h => skeleton(h,0.05));
+  hands.forEach((hand,hi) => {
+    [4,8,12,16,20].forEach((ti,fi) => {
+      const key=`p${hi}-${fi}`, p=hand[ti];
+      const col=P.paint[(hi*5+fi)%P.paint.length];
+      if (trailMap.has(key)) {
+        const prev=trailMap.get(key);
+        paintCtx.beginPath(); paintCtx.moveTo(prev.x,prev.y); paintCtx.lineTo(p.x,p.y);
+        paintCtx.strokeStyle=col; paintCtx.lineWidth=4+fi*1.5; paintCtx.lineCap='round';
+        paintCtx.globalAlpha=0.85; paintCtx.shadowColor=col; paintCtx.shadowBlur=12;
+        paintCtx.stroke(); paintCtx.shadowBlur=0; paintCtx.globalAlpha=1;
+      }
+      trailMap.set(key,{x:p.x,y:p.y});
+      dot(p,7,col);
+    });
+  });
+  if (hands.length===2) {
+    drawTwoHandStrings(hands[0], hands[1], P.paint, { allToAll:false, fingersOnly:true, lineWidth:2, maxAlpha:0.7 });
+  }
+}
+
+function drawConstellation(hands) {
+  hands.forEach(h => skeleton(h,0.05));
+  if (!hands.length) return;
+  const pts=[]; hands.forEach(h => h.forEach(p => pts.push(p)));
+  const pal=P.constellation;
+  // All visible connections within a range
+  for (let i=0;i<pts.length;i++) for (let j=i+1;j<pts.length;j++) {
+    const dx=pts[j].x-pts[i].x, dy=pts[j].y-pts[i].y, d=Math.sqrt(dx*dx+dy*dy);
+    if (d>320) continue;
+    const a=Math.max(0,(1-d/320)*0.75);
+    ctx.beginPath(); ctx.moveTo(pts[i].x,pts[i].y); ctx.lineTo(pts[j].x,pts[j].y);
+    ctx.strokeStyle=pal[(i+j)%pal.length]; ctx.lineWidth=1; ctx.globalAlpha=a;
+    glow(pal[(i+j)%pal.length],5); ctx.stroke(); noGlow(); ctx.globalAlpha=1;
+  }
+  pts.forEach((p,i) => {
+    const col=pal[i%pal.length];
+    [18,9,4].forEach((r,l) => { ctx.beginPath(); ctx.arc(p.x,p.y,r,0,Math.PI*2); ctx.fillStyle=col; ctx.globalAlpha=[0.07,0.18,1][l]; if(l===2)glow(col,26); ctx.fill(); noGlow(); });
+    ctx.globalAlpha=1;
+    for (let a=0;a<4;a++) { const ang=(a/4)*Math.PI*2+t; ctx.beginPath(); ctx.moveTo(p.x,p.y); ctx.lineTo(p.x+Math.cos(ang)*14,p.y+Math.sin(ang)*14); ctx.strokeStyle=col; ctx.lineWidth=1; ctx.globalAlpha=0.5; glow(col,5); ctx.stroke(); noGlow(); ctx.globalAlpha=1; }
+  });
+  // 2-hand: full inter-hand connections + bright strings
+  if (hands.length===2) {
+    drawTwoHandStrings(hands[0], hands[1], pal, { allToAll:true, lineWidth:0.9, maxAlpha:0.65, maxDist:450 });
+  }
+}
+
+function drawBones(hands) {
+  if (!hands.length) return;
+  const C=[[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[0,9],[9,10],[10,11],[11,12],[0,13],[13,14],[14,15],[15,16],[0,17],[17,18],[18,19],[19,20]];
+  const pal=P.bones;
+  hands.forEach(hand => {
+    C.forEach(([a,b],i) => {
+      const col=pal[i%pal.length];
+      [12,5,1.5].forEach((lw,l) => {
+        ctx.beginPath(); ctx.moveTo(hand[a].x,hand[a].y); ctx.lineTo(hand[b].x,hand[b].y);
+        ctx.strokeStyle=col; ctx.lineWidth=lw; ctx.globalAlpha=[0.07,0.18,1][l];
+        ctx.lineCap='round'; if(l===2)glow(col,18); ctx.stroke(); noGlow();
+      });
+      ctx.globalAlpha=1;
+    });
+    [0,4,8,12,16,20,5,9,13,17].forEach((ji,i) => {
+      const p=hand[ji], r=ji===0?11:6, col=pal[i%pal.length];
+      [r*2.2,r*1.2,r*0.5].forEach((rad,l) => { ctx.beginPath(); ctx.arc(p.x,p.y,rad,0,Math.PI*2); ctx.fillStyle=col; ctx.globalAlpha=[0.05,0.14,1][l]; if(l===2)glow(col,24); ctx.fill(); noGlow(); });
+      ctx.globalAlpha=1;
+    });
+  });
+  if (hands.length===2) {
+    // Skeletal string bridge: matching bones connect across
+    drawTwoHandStrings(hands[0], hands[1], pal, { allToAll:false, fingersOnly:false, lineWidth:1.5, maxAlpha:0.9 });
+    dot(hands[0][0],13,'#fb923c',30); dot(hands[1][0],13,'#fb923c',30);
+  }
+}
+
+function initMagnetParticles() {
+  magnetParticles = Array.from({length:200},()=>({
+    x:Math.random()*canvas.width, y:Math.random()*canvas.height,
+    vx:0, vy:0, col:P.magnet[Math.floor(Math.random()*P.magnet.length)]
+  }));
+}
+
+function drawMagnet(hands) {
+  const attractors=[];
+  if (hands.length) {
+    hands.forEach(hand => { attractors.push(palmCenter(hand)); getTips(hand).forEach(t2=>attractors.push(t2)); });
+    hands.forEach(h => skeleton(h,0.06));
+  }
+  magnetParticles.forEach(p => {
+    if (attractors.length) {
+      attractors.forEach(a => {
+        const dx=a.x-p.x, dy=a.y-p.y, d=Math.sqrt(dx*dx+dy*dy)+1;
+        const force=Math.min(900/(d*d),9); p.vx+=dx/d*force; p.vy+=dy/d*force;
+      });
+    }
+    p.vx*=0.87; p.vy*=0.87; p.x+=p.vx; p.y+=p.vy;
+    if(p.x<0)p.x=canvas.width; if(p.x>canvas.width)p.x=0;
+    if(p.y<0)p.y=canvas.height; if(p.y>canvas.height)p.y=0;
+    const spd=Math.sqrt(p.vx*p.vx+p.vy*p.vy), a=Math.min(spd/10,1);
+    ctx.beginPath(); ctx.arc(p.x,p.y,2.2,0,Math.PI*2);
+    ctx.fillStyle=p.col; ctx.globalAlpha=0.35+a*0.65; glow(p.col,a*16); ctx.fill(); noGlow(); ctx.globalAlpha=1;
+  });
+  if (hands.length===2) {
+    drawTwoHandStrings(hands[0], hands[1], P.magnet, { allToAll:true, lineWidth:0.8, maxAlpha:0.4, maxDist:350 });
+    if (Math.random()<0.4) {
+      const pc1=palmCenter(hands[0]), pc2=palmCenter(hands[1]);
+      const frac=Math.random(), bx=pc1.x+(pc2.x-pc1.x)*frac, by=pc1.y+(pc2.y-pc1.y)*frac;
+      magnetParticles.push({ x:bx+(Math.random()-0.5)*20, y:by+(Math.random()-0.5)*20, vx:(Math.random()-0.5)*4, vy:(Math.random()-0.5)*4, col:'#f0abfc' });
+      if (magnetParticles.length>260) magnetParticles.shift();
+    }
+  }
+}
+
+function drawKaleidoscope(hands) {
+  hands.forEach(h => skeleton(h,0.05));
+  if (!hands.length) return;
+  const pal=P.kaleidoscope;
+  const cx=canvas.width/2, cy=canvas.height/2;
+  const slices = hands.length===2 ? 12 : 8;
+  const pts=[]; hands.forEach(h => getKey(h).forEach(p => pts.push(p)));
+  ctx.save(); ctx.translate(cx,cy);
+  for (let s=0;s<slices;s++) {
+    ctx.save(); ctx.rotate((s/slices)*Math.PI*2); if(s%2===1) ctx.scale(-1,1);
+    const local=pts.map(p=>({x:p.x-cx,y:p.y-cy}));
+    for (let c=0;c<2;c++) {
+      ctx.beginPath(); ctx.moveTo(local[0].x,local[0].y);
+      for (let i=0;i<local.length-1;i++) {
+        const mx2=(local[i].x+local[i+1].x)/2, my2=(local[i].y+local[i+1].y)/2;
+        ctx.quadraticCurveTo(local[i].x,local[i].y,mx2,my2);
+      }
+      ctx.strokeStyle=pal[(s+c)%pal.length]; ctx.lineWidth=2.5-c; ctx.globalAlpha=0.8-c*0.28;
+      glow(pal[(s+c)%pal.length],14); ctx.stroke(); noGlow();
+    }
+    ctx.globalAlpha=1;
+    local.forEach((p,i) => { ctx.beginPath(); ctx.arc(p.x,p.y,4,0,Math.PI*2); ctx.fillStyle=pal[(i+s)%pal.length]; glow(pal[(i+s)%pal.length],18); ctx.fill(); noGlow(); });
+    ctx.restore();
+  }
+  ctx.restore(); ctx.globalAlpha=1;
+}
+
+/* ---- Main loop ---- */
+function draw() {
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  t += 0.015;
+
+  if (!started) {
+    const cx=canvas.width/2, cy=canvas.height/2;
+    for (let i=0;i<6;i++) {
+      const pts2=Array.from({length:6},(_,j)=>{ const a=(j/6)*Math.PI*2+t+i*0.35; return {x:cx+Math.cos(a)*(110+i*22),y:cy+Math.sin(a)*(65+i*13)}; });
+      ctx.beginPath(); ctx.moveTo(pts2[0].x,pts2[0].y);
+      pts2.forEach((p,k) => { const nx=(p.x+pts2[(k+1)%pts2.length].x)/2,ny=(p.y+pts2[(k+1)%pts2.length].y)/2; ctx.quadraticCurveTo(p.x,p.y,nx,ny); });
+      ctx.strokeStyle=P.string[i%P.string.length]; ctx.lineWidth=1.5; ctx.globalAlpha=0.28;
+      glow(P.string[i%P.string.length],8); ctx.stroke(); noGlow();
+    }
+    ctx.globalAlpha=1;
+  } else {
+    if      (mode==='string')        drawString(handData);
+    else if (mode==='elastic')       drawElastic(handData);
+    else if (mode==='web')           drawWeb(handData);
+    else if (mode==='ribbons')       drawRibbons(handData);
+    else if (mode==='lasers')        drawLasers(handData);
+    else if (mode==='bubbles')       drawBubbles(handData);
+    else if (mode==='paint')         drawPaint(handData);
+    else if (mode==='constellation') drawConstellation(handData);
+    else if (mode==='bones')         drawBones(handData);
+    else if (mode==='magnet')        drawMagnet(handData);
+    else if (mode==='kaleidoscope')  drawKaleidoscope(handData);
+  }
+
+  requestAnimationFrame(draw);
+}
+draw();
+</script>
+</body>
+</html>
